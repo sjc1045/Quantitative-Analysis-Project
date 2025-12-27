@@ -1,0 +1,60 @@
+input rsiLength = 14;
+input rsi_param = 29.97;
+input relVolLength = 20;
+input relVol_param = 1.24;
+input fastLength = 12;
+input slowLength = 26;
+input macdLength = 9;
+input macd_param = -2.131;
+input ret1D_param = -.0488;
+input ret5D_param = -.022;
+
+def avgVol = Average(volume, relVolLength);
+def relVolume = volume / avgVol;
+
+def delta = close - close[1];
+
+def gain = if delta > 0 then delta else 0;
+def loss = if delta < 0 then -delta else 0;
+
+def avgGain = Average(gain, rsiLength);
+def avgLoss = Average(loss, rsiLength);
+
+def rs = avgGain / avgLoss;
+def rsi = 100 - (100 / (1 + rs));
+
+def emaFast = ExpAverage(close, fastLength);
+def emaSlow = ExpAverage(close, slowLength);
+
+def macd = emaFast - emaSlow;
+def signal = ExpAverage(macd, macdLength);
+def macdDiff = macd - signal;
+
+def ret1D = (close / close[1]) - 1;
+def ret5D = (close / close[5]) - 1;
+
+def buySignal =
+    rsi > rsi_param and
+    relVolume < relVol_param and
+    macdDiff < macd_param and
+    ret1D < ret1D_param and
+    ret5D < ret5D_param;
+
+Alert(
+    buySignal,
+    "ML BUY SIGNAL: Conditions met today — BUY NEXT DAY",
+    Alert.BAR,
+    Sound.Chimes
+);
+
+AssignPriceColor(
+    if buySignal then Color.GREEN else Color.CURRENT
+);
+
+AddChartBubble(
+    buySignal,
+    low,
+    "BUY N+1",
+    Color.GREEN,
+    no
+);
