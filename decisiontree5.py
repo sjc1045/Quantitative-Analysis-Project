@@ -12,17 +12,11 @@ import pandas as pd
 import numpy as np
 from sklearn.tree import DecisionTreeClassifier
 
-# =========================
-# CONFIG
-# =========================
-TICKER = "BA"
+TICKER = "BA"  # Any ticker can go here, I prefer Large Cap stocks
 START_DATE = "2016-01-01"
 MAX_DEPTH = 5
 MIN_SAMPLES_LEAF = 40
 
-# =========================
-# LOAD DATA
-# =========================
 df = yf.download(
     TICKER,
     start=START_DATE,
@@ -36,70 +30,38 @@ if isinstance(df.columns, pd.MultiIndex):
 
 df = df.reset_index()
 
-# =========================
-# INDICATORS
-# =========================
-
-# --- Returns
 df["return_1d"] = df["Close"].pct_change(1)
 df["return_5d"] = df["Close"].pct_change(5)
 
-# --- Volatility (10-day rolling)
 df["volatility_10"] = df["return_1d"].rolling(10).std()
 
-# --- RSI (14, SMA-based)
 delta = df["Close"].diff()
 gain = delta.clip(lower=0)
 loss = -delta.clip(upper=0)
 rs = gain.rolling(14).mean() / loss.rolling(14).mean()
 df["rsi"] = 100 - (100 / (1 + rs))
 
-# --- Relative Volume (20)
 df["rel_volume"] = df["Volume"] / df["Volume"].rolling(20).mean()
 
-# --- MACD Histogram (macd_diff)
 ema12 = df["Close"].ewm(span=12, adjust=False).mean()
 ema26 = df["Close"].ewm(span=26, adjust=False).mean()
 macd = ema12 - ema26
 signal = macd.ewm(span=9, adjust=False).mean()
 df["macd_diff"] = macd - signal
 
-# =========================
-# TARGET (BUY NEXT DAY)
-# =========================
 df["forward_return"] = df["Close"].shift(-1) / df["Open"].shift(-1) - 1
 df["target"] = (df["forward_return"] > 0).astype(int)
 
-# =========================
-# MODEL DATA
-# =========================
-features = [
-    "rsi",
-    "rel_volume",
-    "macd_diff",
-    "return_1d",
-    "return_5d",
-    "volatility_10"
-]
+features = [ "rsi", "rel_volume", "macd_diff", "return_1d", "return_5d", "volatility_10"]
 
 df = df.dropna()
 X = df[features]
 y = df["target"]
 
-# =========================
-# TRAIN DECISION TREE
-# =========================
-model = DecisionTreeClassifier(
-    max_depth=MAX_DEPTH,
-    min_samples_leaf=MIN_SAMPLES_LEAF,
-    random_state=42
-)
+model = DecisionTreeClassifier(max_depth=MAX_DEPTH, min_samples_leaf=MIN_SAMPLES_LEAF, random_state=42)
 
 model.fit(X, y)
 
-# =========================
-# LEAF ANALYSIS
-# =========================
 df["leaf"] = model.apply(X)
 
 results = []
@@ -120,9 +82,6 @@ for leaf in df["leaf"].unique():
 best = max(results, key=lambda x: x["avg_gain"])
 best_leaf_id = best["leaf"]
 
-# =========================
-# EXTRACT RULES
-# =========================
 tree = model.tree_
 
 def extract_rules(node=0, path=None):
@@ -149,10 +108,7 @@ def extract_rules(node=0, path=None):
 rules = extract_rules()
 best_rules = next(r for r in rules if r[0] == best_leaf_id)
 
-# =========================
-# PRINT BEST RULE SET
-# =========================
-print("\n=== BEST INDICATOR COMBINATION ===")
+print("\nBEST INDICATOR COMBINATION")
 for rule in best_rules[1]:
     print(rule)
 
@@ -160,13 +116,10 @@ print(f"\nAvg Gain: {best['avg_gain']*100:.2f}%")
 print(f"Win Rate: {best['win_rate']*100:.2f}%")
 print(f"Samples: {best['samples']}")
 
-# =========================
-# PRINT ALL SIGNAL DAYS
-# =========================
 signal_days = df[df["leaf"] == best_leaf_id].copy()
 signal_days["buy_date"] = signal_days["Date"].shift(-1)
 
-print("\n=== ALL BUY SIGNALS (CRITERIA MET ON DAY N) ===\n")
+print("\n ALL BUY SIGNALS (CRITERIA MET ON DAY N)\n")
 
 for _, row in signal_days.iterrows():
     print(
